@@ -1,0 +1,8 @@
+# 1. Initialiser le dépôt Git
+git init
+
+# 2. Ajouter tous les fichiers (Git va lire le .gitignore automatiquement)
+git add .
+
+# 3. Vérifier ce qui va être poussé (LE PLUS IMPORTANT)
+git status
