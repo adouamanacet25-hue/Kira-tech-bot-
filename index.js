@@ -1,4 +1,3 @@
-// index.js
 require('dotenv').config();
 const express = require('express');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
@@ -15,6 +14,7 @@ app.use((req, res, next) => {
 });
 
 let sock = null;
+let isReady = false;
 
 // Fonction pour démarrer le socket
 async function startSock() {
@@ -33,71 +33,99 @@ async function startSock() {
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('Connexion fermée, reconnexion...', shouldReconnect);
+            isReady = false;
             if (shouldReconnect) startSock();
         } else if (connection === 'open') {
             console.log('✅ Bot KIRA_TECH connecté !');
+            isReady = true;
         }
     });
 
-    // Écoute des messages
+    // Gestion des messages (commandes)
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return; // Ignorer les messages du bot
-
+        if (!msg.message || msg.key.fromMe) return;
         const remoteJid = msg.key.remoteJid;
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        if (!text.startsWith('!')) return; // Ignorer les messages qui ne sont pas des commandes
+        if (!text.startsWith('!')) return;
 
         const parts = text.trim().split(/\s+/);
         const command = parts[0].toLowerCase();
         const args = parts.slice(1);
 
-        // Vérifier si la commande existe
         if (commands[command]) {
             try {
                 const result = await commands[command](msg, args, sock);
                 if (result) {
-                    let reply = result.text || '';
-                    const mentions = result.mentions || [];
-                    await sock.sendMessage(remoteJid, { text: reply, mentions: mentions });
+                    await sock.sendMessage(remoteJid, { 
+                        text: result.text || '', 
+                        mentions: result.mentions || [] 
+                    });
                 }
             } catch (error) {
-                console.error(`Erreur dans la commande ${command}:`, error);
-                await sock.sendMessage(remoteJid, { text: `❌ Erreur lors de l'exécution de ${command}.` });
+                console.error(`Erreur dans ${command}:`, error);
+                await sock.sendMessage(remoteJid, { text: `❌ Erreur dans ${command}` });
             }
         } else {
-            // Commande inconnue
-            await sock.sendMessage(remoteJid, { text: `❓ Commande "${command}" inconnue. Tapez !help pour la liste.` });
+            await sock.sendMessage(remoteJid, { text: `❓ Commande inconnue. Tapez !help` });
         }
     });
 
-    // Gestion des événements de groupe (join / leave)
+    // Gestion des entrées/sorties de groupe
     sock.ev.on('group-participants.update', async (update) => {
         const { id, participants, action } = update;
         if (action === 'add') {
-            for (const participant of participants) {
-                await sock.sendMessage(id, { text: `👋 ${config.welcome} @${participant.split('@')[0]}`, mentions: [participant] });
+            for (const p of participants) {
+                await sock.sendMessage(id, { 
+                    text: `👋 ${config.welcome} @${p.split('@')[0]}`, 
+                    mentions: [p] 
+                });
             }
         } else if (action === 'remove') {
-            for (const participant of participants) {
-                await sock.sendMessage(id, { text: `👋 ${config.goodbye} @${participant.split('@')[0]}`, mentions: [participant] });
+            for (const p of participants) {
+                await sock.sendMessage(id, { 
+                    text: `👋 ${config.goodbye} @${p.split('@')[0]}`, 
+                    mentions: [p] 
+                });
             }
         }
     });
+
+    return sock;
 }
 
-// Endpoint d'appairage (inchangé)
+// Endpoint pour générer le code d'appairage (CORRIGÉ)
 app.post('/api/pair', async (req, res) => {
     const phone = req.body.phone;
-    if (!phone) return res.status(400).json({ error: 'Numéro requis' });
+    if (!phone) {
+        return res.status(400).json({ error: 'Numéro requis' });
+    }
+
     try {
-        if (!sock) await startSock();
+        // Si le socket n'existe pas ou n'est pas prêt, on le démarre
+        if (!sock || !isReady) {
+            console.log('🔄 Démarrage du socket...');
+            await startSock();
+            // Attendre que la connexion soit établie
+            await new Promise(resolve => {
+                const check = setInterval(() => {
+                    if (isReady) {
+                        clearInterval(check);
+                        resolve();
+                    }
+                }, 500);
+            });
+        }
+
+        // Demander le code d'appairage (retourne un code numérique à 8 chiffres)
         const code = await sock.requestPairingCode(phone);
         console.log(`📱 Code pour ${phone} : ${code}`);
-        res.json({ code });
+
+        res.json({ code: code.toString() });
+
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        console.error('Erreur appairage :', error);
+        res.status(500).json({ error: 'Erreur serveur, réessayez' });
     }
 });
 
@@ -105,5 +133,6 @@ app.post('/api/pair', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
     console.log(`🚀 Serveur KIRA_TECH lancé sur le port ${PORT}`);
+    // Démarrer le bot au lancement
     await startSock();
 });
