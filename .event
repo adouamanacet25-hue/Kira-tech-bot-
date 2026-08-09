@@ -1,0 +1,12 @@
+OWNER_NAME=KIRA
+OWNER_NUMBER=242050530427
+CHANNEL_LINK=https://whatsapp.com/channel/0029Vb7WJzp84OmBD0fEEJ2X
+WELCOME_MESSAGE=Bienvenue dans le groupe KIRA_TECH ! Profite des commandes.
+GOODBYE_MESSAGE=À Dieu, on espère te revoir bientôt !
+
+# Clés API (optionnelles, pour des commandes avancées)
+OPENWEATHER_API_KEY=your_key_here
+WIKIPEDIA_USER_AGENT=KIRA-TECH-Bot/1.0
+GOOGLE_API_KEY=your_key_here
+YOUTUBE_API_KEY=your_key_here
+DEEPL_API_KEY=your_key_here
